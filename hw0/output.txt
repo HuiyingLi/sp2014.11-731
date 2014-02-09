@@ -3,5 +3,5 @@ name:
    first: Huiying
    last: Li
 email: huiying1@andrew.cmu.edu
-leaderboard: amelie
+leaderboard: notformt
 languages: [zh,en]
