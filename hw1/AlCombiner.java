@@ -2,13 +2,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class AlCombiner {
-	String fAl = "out.rev.1";
-	String fRevAl = "out.1";
+	String fAl = "test.out";
+	String fRevAl = "test.rev";
 	List<int[][]> al=null;
 	List<int[][]> revAl=null;
 	public AlCombiner() {
-		List<int[][]> al = Reader.readAlign(fAl);
-		List<int[][]> revAl = Reader.readAlign(fRevAl);
+		al = Reader.readAlign(fAl);
+		revAl = Reader.readAlign(fRevAl);
 	}
 
 	public List<int[][]> intersection() {
@@ -27,7 +27,7 @@ public class AlCombiner {
 			int[][] toadd = new int[inter.size()][2];
 			for (int i = 0; i < inter.size(); i++) {
 				toadd[i][0] = inter.get(i).e;
-				toadd[i][0] = inter.get(i).f;
+				toadd[i][1] = inter.get(i).f;
 			}
 			intersect.add(toadd);
 		}
@@ -40,7 +40,15 @@ public class AlCombiner {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		AlCombiner ab = new AlCombiner();
-		ab.intersection();
+		List<int[][]> result=ab.intersection();
+		System.out.println("Begin printing");
+		for(int[][] al:result){
+			for(int i=0; i<al.length; i++){
+				System.out.print(al[i][0]+"-"+al[i][1]+" ");
+			}
+			System.out.println();
+		}
+		
 	}
 
 }

@@ -5,7 +5,8 @@ public class Aligner{
     public int N=5; //By default
     public boolean useNull=false;
     public boolean diag=true;
-    public double tension=8;
+    public double tension=15;
+    public static boolean reverse=true;
     //translation table:
     //Hashtable<f_word,Hashtable<e_word, probability>>
     public Hashtable<String, Hashtable<String, Double>> TTable=new Hashtable<String, Hashtable<String, Double>>();
@@ -385,7 +386,7 @@ public class Aligner{
     	}
     }
     public static void main(String[] args){
-    	boolean reverse=false;
+    	//boolean reverse=false;
 //        List<SentPair> sentPairs=Reader.readParallelCorpus("data/dev-test-train.de-en");
 //    	List<SentPair> sentPairs=Reader.readParallelCorpus("5000.txt");
     	List<SentPair> sentPairs=Reader.readParallelCorpus("data/dev-test-train.de-en", reverse);
