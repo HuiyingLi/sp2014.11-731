@@ -2,10 +2,10 @@ import java.io.*;
 import java.util.*;
 public class Aligner{
     public List<SentPair> text=null;
-    public int N=5; //By default
+    public int N=6; //By default
     public boolean useNull=false;
     public boolean diag=true;
-    public double tension=15;
+    public double tension=15.5;
     public static boolean reverse=true;
     //translation table:
     //Hashtable<f_word,Hashtable<e_word, probability>>

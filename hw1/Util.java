@@ -1,9 +1,20 @@
 import java.util.*;
 public class Util{
+    public static int maxLen=5;
 	public static String[] normalizeText(String sent){
 		String[] split=sent.split(" ");
 		for(int i = 0; i < split.length; i++){
+            //lowercase
 			split[i]=split[i].toLowerCase();
+            //transform numbers to zero
+            //if(isNumeric(split[i])){
+            //    split[i]="0";
+            //}
+            if(split[i].length()>maxLen){
+                split[i]=split[i].substring(0,maxLen+1);
+            }
+            //maxlength
+
 //			Stemmer s = new Stemmer();
 //			for(int j=0; j<split[i].length(); j++)
 //			{
@@ -14,6 +25,16 @@ public class Util{
 		}
 		return split;
 	}
+
+    public static boolean isNumeric(String str){
+        try{
+            double d = Double.parseDouble(str);
+        }
+        catch(NumberFormatException e){
+            return false;
+        }
+        return true;
+    }
     public static double[] randomInitArray(int n){
         //Currently fixed for debug purpose
         double [] arr=new double[n];
