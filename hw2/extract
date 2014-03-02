@@ -1,15 +1,165 @@
 #!/usr/bin/env python
-
+import pdb
 import argparse
 import json
 import os, sys, math
+import string_kernel as sk
+import re
+
+kernel="eq"
+#kernel='ed' #edit distance
+#kernel='lcs'
+#kernel='pre7'
+
+puct=[',','.','?',':',"'",'"',"(",")"]
+#split string into words and normalize
+def string2words(s):
+    s=s.lower()
+    l=re.compile('\.|,|\s|\(|\)|\'|\?|:|\"').split(s)
+    res=[]
+    for w in l:
+        if len(w)>0:
+            res.append(w)
+    return res
+    
+#takes in a list of words and make a dict where key is the word
+#and value is the frequency:
+def freq_dict(words, n):
+    d={}
+    if n==1:
+        for w in words:
+            if w not in d:
+                d[w]=1.0
+            else:
+                d[w]=d[w]+1
+    elif n==2:
+        for i in range(len(words)-1):
+            bi=tuple([words[i],words[i+1]])
+            if bi not in d:
+                d[bi]=1.0
+            else:
+                d[bi]=d[bi]+1
+    elif n==3:
+        for i in range(len(words)-2):
+            tri=tuple([words[i],words[i+1],words[i+2]])
+            if tri not in d:
+                d[tri]=1.0
+            else:
+                d[tri]=d[tri]+1
+    return d
+
+def string_eql(h,r):
+    if kernel=='eq':
+        if h==r:
+            return True
+    if kernel=='ed':
+        if sk.levenshtein(h,r)<2:
+            return True
+
+    if kernel=='lcs':
+        cs=sk.lcs(h,r)
+        if len(cs)*1.0/min(len(h),len(r)) >=0.75:
+            return True
+    if kernel.startswith('pre'):
+        n=int(kernel[-1])
+        if len(h)>=n:
+            h=h[:n]
+        if len(r)>=n:
+            r=r[:n]
+        if h==r:
+            return True
+    return False
+
+#the arguments are list of strings whose lengths equal 2 or 3
+def ngram_eql(h, r):
+    n=len(h) 
+    sum=0
+    for i in range(n):
+        if string_eql(h[i], r[i]):
+            sum+=1
+    if sum==n:
+        return True
+    return False
+##takes in 2 lists of strings, map them according to Meteor paper
+def map():
+
 
 def extract_features(hyp, ref):
-  hwords = hyp.lower().split()
-  rwords = ref.lower().split()
-  refset = set(rwords)
-  precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
-  return {'prec':precision}
+    featdict={}
+#    pdb.set_trace()
+    hwords = hyp.lower().split()
+    rwords = ref.lower().split()
+#    hwords=string2words(hyp)
+#    rwords=string2words(ref)
+   # refset = set(rwords)
+   # precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
+
+#####################unigram precision recall #####################
+    refd=freq_dict(rwords,1)
+    hd=freq_dict(hwords,1)
+    #modified unigram
+    sum=0
+    for h in hd:
+        for r in refd:
+            if refd[r]>0:
+                if string_eql(h,r):
+                    if hd[h]>=refd[r]:
+                        sum+=refd[r]
+                        refd[r]=0
+                    else:
+                        refd[r]-=hd[h]
+                        sum+=hd[h]
+                    break
+    precision=sum*1.0/len(hwords)
+    recall=sum*1.0/len(rwords)
+    featdict['prec']=precision
+    featdict['recall']=recall
+    if precision>0 and recall>0:
+        featdict['fmean']=10*precision*recall/(2*recall+8*precision)
+    else:
+        featdict['fmean']=0
+####################bigram precision recall ######################
+    refbid=freq_dict(rwords,2)
+    hbid=freq_dict(hwords,2)
+    sum=0
+    for h in hbid:
+        for r in refbid:
+            if ngram_eql(h,r):
+                if hbid[h]>=refbid[r]:
+                    sum+=refbid[r]
+                    refbid[r]=0
+                else:
+                    refbid[r]-=hbid[h]
+                    sum+=hbid[h]
+    if len(hwords)>1 and len(rwords)>1:
+        biprecision=sum*1.0/(len(hwords)-1)
+        birecall=sum*1.0/(len(rwords)-1)
+    else:
+        biprecision=0
+        birecall=0
+    featdict['biprec']=biprecision
+    featdict['birecall']=birecall
+###################trigram precision recall ######################
+    reftrid=freq_dict(rwords,3)
+    htrid=freq_dict(hwords,3)
+    sum=9
+    for h in htrid:
+        for r in reftrid:
+            if ngram_eql(h,r):
+                sum+=reftrid[r]
+                reftrid[r]=0
+            else:
+                reftrid[r]-=htrid[h]
+                sum+=htrid[h]
+    if len(hwords)>2 and len(rwords)>2:
+        triprecision=sum*1.0/(len(hwords)-2)
+        trirecall=sum*1.0/(len(rwords)-2)
+    else:
+        triprecision=0
+        trirecall=0
+#    featdict['triprec']=triprecision
+#    featdict['trirecall']=trirecall
+    return featdict
 
 argparser = argparse.ArgumentParser(prog='extract')
 argparser.add_argument('-x', '--pairs', dest='pairs', default='data/en-cs.pairs', help='Reference-Hypothesis pairs')
@@ -20,8 +170,10 @@ lc = 0
 sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.\n' % args.pairs)
 # loop over all (ref,hyp) pairs in the input file and extract evaluation features
 for ref_hyp in open(args.pairs):
-  lc += 1
-  ref, hyp = ref_hyp.rstrip().split(' ||| ')
-  fmap = extract_features(hyp, ref)
-  print json.dumps(fmap)   # print evaluation feature map
+    lc += 1
+    if lc%1000==0:
+        sys.stderr.write("processed "+str(lc)+"\n")
+    ref, hyp = ref_hyp.rstrip().split(' ||| ')
+    fmap = extract_features(hyp, ref)
+    print json.dumps(fmap)   # print evaluation feature map
 
