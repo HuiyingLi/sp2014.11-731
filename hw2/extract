@@ -1,16 +1,24 @@
 #!/usr/bin/env python
+import math
+import match
 import pdb
 import argparse
 import json
 import os, sys, math
 import string_kernel as sk
 import re
-
-kernel="eq"
+import gen_lmstat as lm
+import numpy as np
+#kernel="eq"
 #kernel='ed' #edit distance
 #kernel='lcs'
-#kernel='pre7'
-
+kernel='pre6'
+alpha=5 #metoer alpha(precision portion out of 10)
+beta=4.5 #bleu beta(precision portion out of 10)
+stagedecay=0.05
+smooth=0
+#style=set(['bleu'])
+style=set(['bleu','me'])
 puct=[',','.','?',':',"'",'"',"(",")"]
 #split string into words and normalize
 def string2words(s):
@@ -80,85 +88,142 @@ def ngram_eql(h, r):
     if sum==n:
         return True
     return False
+
 ##takes in 2 lists of strings, map them according to Meteor paper
-def map():
-
-
+def map(hwords,rwords):
+    al=np.zeros(len(hwords))-np.ones(len(hwords))#array of all -1
+    taken=np.ones(len(rwords))
+    for i in range(len(hwords)):
+        h=hwords[i]
+        for j in range(len(rwords)):
+            r=rwords[j]
+            if taken[j]==1:
+                if string_eql(h,r):
+                    al[i]=j
+                    taken[j]=0
+    return al
 def extract_features(hyp, ref):
     featdict={}
 #    pdb.set_trace()
     hwords = hyp.lower().split()
     rwords = ref.lower().split()
+######################## LM features #############################
+    if 'lm' in style:
+        featdict['unilm']=lm.calc_sentlm(hwords,1)*0.1
+        featdict['bilm']=lm.calc_sentlm(hwords,2)*0.1
+        featdict['trilm']=lm.calc_sentlm(hwords,3)*0.1
+######################## meteor score ############################
+    if 'me' in style:
+        match1=match.stage1(rwords, hwords)
+        sum=0
+        misp=0
+        for i in range(len(match1)):
+            m=match1[i]
+            if m!=-1:
+                sum+=1
+                misp-=math.fabs(i*1.0/len(match1)-m*1.0/len(rwords))
+            else:
+                misp-=1.0
+        match2=match.stage2(rwords,hwords,match1)
+        for m in match2:
+            if m!=-1:
+                sum+=stagedecay
+        prec=sum*1.0/len(hwords)
+        rec=sum*1.0/len(rwords)
+        if prec>0 and rec>0:
+            fmean=10*prec*rec/(alpha*prec+rec)
+        else:
+            fmean=0
+        #featdict['mprec']=prec
+        #featdict['mrec']=rec
+        #featdict['mfmean']=fmean
+        featdict['misposition']=misp/len(hwords) 
+        ##gather high order ngram
+        i=0
+        '''
+        nchunk=0
+        while(i<len(hwords)-1):
+            i+=1            
+            if align[i]!=-1:
+                if align[i]!=align[i-1]-1:
+                    nchunk+=1
+        if sum>0:
+            penalty=nchunk*1.0/sum
+            penalty=0.5*penalty*penalty*penalty
+        else:
+            penalty=0.5
+#        featdict['mpenalty']=penalty
+'''
 #    hwords=string2words(hyp)
 #    rwords=string2words(ref)
    # refset = set(rwords)
    # precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
-
+    if 'bleu' in style:
 #####################unigram precision recall #####################
-    refd=freq_dict(rwords,1)
-    hd=freq_dict(hwords,1)
-    #modified unigram
-    sum=0
-    for h in hd:
-        for r in refd:
-            if refd[r]>0:
-                if string_eql(h,r):
-                    if hd[h]>=refd[r]:
-                        sum+=refd[r]
-                        refd[r]=0
-                    else:
-                        refd[r]-=hd[h]
-                        sum+=hd[h]
-                    break
-    precision=sum*1.0/len(hwords)
-    recall=sum*1.0/len(rwords)
-    featdict['prec']=precision
-    featdict['recall']=recall
-    if precision>0 and recall>0:
-        featdict['fmean']=10*precision*recall/(2*recall+8*precision)
-    else:
-        featdict['fmean']=0
+        refd=freq_dict(rwords,1)
+        hd=freq_dict(hwords,1)
+        #modified unigram
+        sum=0
+        for h in hd:
+            for r in refd:
+                if refd[r]>0:
+                    if string_eql(h,r):
+                        if hd[h]>=refd[r]:
+                            sum+=refd[r]
+                            refd[r]=0
+                        else:
+                            refd[r]-=hd[h]
+                            sum+=hd[h]
+                        break
+        precision=sum*1.0/len(hwords)
+        recall=sum*1.0/len(rwords)
+        featdict['prec']=precision+smooth
+        featdict['recall']=recall+smooth
+        if precision>0 and recall>0:
+            featdict['fmean']=10*precision*recall/((10-beta)*recall+beta*precision)+smooth
+        else:
+            featdict['fmean']=0+smooth
 ####################bigram precision recall ######################
-    refbid=freq_dict(rwords,2)
-    hbid=freq_dict(hwords,2)
-    sum=0
-    for h in hbid:
-        for r in refbid:
-            if ngram_eql(h,r):
-                if hbid[h]>=refbid[r]:
-                    sum+=refbid[r]
-                    refbid[r]=0
-                else:
-                    refbid[r]-=hbid[h]
-                    sum+=hbid[h]
-    if len(hwords)>1 and len(rwords)>1:
-        biprecision=sum*1.0/(len(hwords)-1)
-        birecall=sum*1.0/(len(rwords)-1)
-    else:
-        biprecision=0
-        birecall=0
-    featdict['biprec']=biprecision
-    featdict['birecall']=birecall
+        refbid=freq_dict(rwords,2)
+        hbid=freq_dict(hwords,2)
+        sum=0
+        for h in hbid:
+            for r in refbid:
+                if ngram_eql(h,r):
+                    if hbid[h]>=refbid[r]:
+                        sum+=refbid[r]
+                        refbid[r]=0
+                    else:
+                        refbid[r]-=hbid[h]
+                        sum+=hbid[h]
+        if len(hwords)>1 and len(rwords)>1:
+            biprecision=sum*1.0/(len(hwords)-1)
+            birecall=sum*1.0/(len(rwords)-1)
+        else:
+            biprecision=0
+            birecall=0
+        featdict['biprec']=biprecision+smooth
+        featdict['birecall']=birecall+smooth
 ###################trigram precision recall ######################
-    reftrid=freq_dict(rwords,3)
-    htrid=freq_dict(hwords,3)
-    sum=9
-    for h in htrid:
-        for r in reftrid:
-            if ngram_eql(h,r):
-                sum+=reftrid[r]
-                reftrid[r]=0
-            else:
-                reftrid[r]-=htrid[h]
-                sum+=htrid[h]
-    if len(hwords)>2 and len(rwords)>2:
-        triprecision=sum*1.0/(len(hwords)-2)
-        trirecall=sum*1.0/(len(rwords)-2)
-    else:
-        triprecision=0
-        trirecall=0
-#    featdict['triprec']=triprecision
-#    featdict['trirecall']=trirecall
+        reftrid=freq_dict(rwords,3)
+        htrid=freq_dict(hwords,3)
+        sum=9
+        for h in htrid:
+            for r in reftrid:
+                if ngram_eql(h,r):
+                    sum+=reftrid[r]
+                    reftrid[r]=0
+                else:
+                    reftrid[r]-=htrid[h]
+                    sum+=htrid[h]
+        if len(hwords)>2 and len(rwords)>2:
+            triprecision=sum*1.0/(len(hwords)-2)
+            trirecall=sum*1.0/(len(rwords)-2)
+        else:
+            triprecision=0
+            trirecall=0
+#    featdict['triprec']=triprecision+smooth
+#    featdict['trirecall']=trirecall+smooth
     return featdict
 
 argparser = argparse.ArgumentParser(prog='extract')
